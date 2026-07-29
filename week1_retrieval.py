@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-import numpy as np
+import numpy as np 
 
 load_dotenv(override=True)
 api_key=os.getenv("OPENAI_API_KEY")
