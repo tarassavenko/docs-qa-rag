@@ -1,11 +1,13 @@
-from rag import answer_question, build_index
-from config import CHUNK_SIZE, OVERLAP
+from fastapi import FastAPI
 
-with open("data/space.txt", encoding="utf-8") as f:
-    text = f.read()
+app = FastAPI()
 
-chunks, embedded_chunks = build_index(text, CHUNK_SIZE, OVERLAP)
-result = answer_question(
-    "Who was the first human went to space and when", embedded_chunks, chunks
-)
-print(result)
+
+@app.get("/")
+async def hello_world():
+    return {"message": "Hello,World"}
+
+
+@app.get("/health")
+async def check_health():
+    return {"status": "ok"}
