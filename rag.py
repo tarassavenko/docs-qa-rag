@@ -67,4 +67,4 @@ def generate_answer(question, retrieved_chunks):
 def answer_question(question, embedded_chunks, chunks):
     retrieved_chunks = retrieve(question, embedded_chunks, chunks)
     answer = generate_answer(question, retrieved_chunks)
-    return answer
+    return {"answer": answer, "sources": retrieved_chunks}
