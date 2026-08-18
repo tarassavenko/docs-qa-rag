@@ -1,9 +1,19 @@
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from rag import answer_question, build_index
 from config import CHUNK_SIZE, OVERLAP
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with open("data/space.txt", encoding="utf-8") as f:
+        text = f.read()
+    app.state.chunks, app.state.embedded_chunks = build_index(text, CHUNK_SIZE, OVERLAP)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 class QueryRequest(BaseModel):
@@ -21,12 +31,6 @@ class QueryResponse(BaseModel):
     sources: list[Source]
 
 
-with open("data/space.txt", encoding="utf-8") as f:
-    text = f.read()
-
-chunks, embedded_chunks = build_index(text, CHUNK_SIZE, OVERLAP)
-
-
 @app.get("/")
 def root():
     return {"name": "docs-qa-rag", "docs": "/docs"}
@@ -39,10 +43,12 @@ def check_health():
 
 @app.get("/status")
 def check_status():
-    return {"indexed": bool(chunks), "chunks": len(chunks)}
+    return {"indexed": bool(app.state.chunks), "chunks": len(app.state.chunks)}
 
 
 @app.post("/ask", response_model=QueryResponse)
 def rag_query(request: QueryRequest):
-    result = answer_question(request.question, embedded_chunks, chunks)
+    result = answer_question(
+        request.question, app.state.embedded_chunks, app.state.chunks
+    )
     return QueryResponse(answer=result["answer"], sources=result["sources"])
