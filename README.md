@@ -18,10 +18,41 @@ those passages.
 
 ## Status
 
-Work in progress. The pipeline runs end to end as a script: a document is
-chunked, embedded, queried by cosine similarity, and answered by a chat model
-constrained to the retrieved context. A FastAPI layer, a real vector store, and
-an evaluation harness are planned.
+Work in progress. The pipeline is served as a FastAPI application: documents are
+ingested over HTTP, chunked, embedded and held in memory, and questions are
+answered by a chat model constrained to the retrieved context. A real vector
+store, per-document metadata, and an evaluation harness are planned.
+
+## API
+
+Run the server with `fastapi dev main.py`, then open `/docs` for an interactive
+UI generated from the request and response models.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Service name and a pointer to the docs |
+| `GET` | `/health` | Liveness check — is the process running |
+| `GET` | `/status` | Readiness check — is anything indexed, and how many chunks |
+| `POST` | `/ask` | Answer a question from the indexed documents, with sources |
+| `POST` | `/ingest` | Add a document's text to the index |
+
+`/health` and `/status` are deliberately separate: the first answers "is the
+process alive", the second "can it actually serve a request". A server with no
+document indexed is healthy but not ready.
+
+### Error handling
+
+| Status | Meaning |
+| --- | --- |
+| `422` | Request failed validation — empty or oversized question or document |
+| `502` | The upstream embedding or chat request failed |
+| `503` | Nothing has been indexed yet, so `/ask` has nothing to answer from |
+
+Input constraints live on the Pydantic models rather than in handler code, so
+FastAPI rejects bad input before it reaches the pipeline and documents the
+limits in `/docs`. Failures of the upstream model are logged with their full
+traceback server-side, while the client receives a generic message — the
+operator needs the detail, the caller does not.
 
 ## Design decisions
 
@@ -37,6 +68,14 @@ an evaluation harness are planned.
   goals of this project, so it is intentionally out of scope.
 - **In-memory index.** Chunks and their embeddings are held in memory and
   rebuilt on each run. A persistent vector store replaces this later.
+- **The index is built at startup, not at import.** A FastAPI lifespan handler
+  seeds the index and stores it on `app.state`, so importing the module — for a
+  test, or to inspect the routes — does not trigger a full embedding run, and
+  there is a matching place to put teardown when a vector store needs closing.
+- **Ingestion appends rather than replaces.** `POST /ingest` extends the index
+  with a new document's chunks. This is the behaviour multi-document retrieval
+  needs, but see the open question below: chunks do not yet carry any record of
+  which document they came from.
 - **Index building is separate from answering.** `build_index` is called once by
   the caller and its result is passed into `answer_question`, so embedding the
   document does not happen per question. This is the shape an API server needs:
@@ -89,6 +128,13 @@ an evaluation set rather than by intuition.
   handful of chunks, so top-k retrieval selects a large fraction of the whole
   document. Retrieval experiments will not produce meaningful numbers until the
   corpus is large enough for retrieval to be genuinely selective.
+- **Chunks carry no source identity.** Ingestion appends to two parallel lists,
+  so once several documents are indexed there is no way to say which document a
+  retrieved chunk came from, to cite a document by name, or to remove a single
+  document without restarting the process. Attaching metadata at insert time is
+  what a vector store's record model provides.
+- **The index does not survive a restart.** Everything is rebuilt from the seed
+  document on startup, so any document added through `/ingest` is lost.
 
 ## Layout
 
@@ -99,7 +145,12 @@ an evaluation set rather than by intuition.
 | `similarity.py` | Cosine similarity between two vectors |
 | `config.py` | API client, model names, and chunking constants |
 | `rag.py` | Index building, top-k retrieval, prompt assembly, generation |
-| `main.py` | Entry point: loads a document, builds the index, asks a question |
+| `main.py` | FastAPI application — the service itself |
+| `ask.py` | Script entry point for exercising the pipeline without HTTP |
+
+`rag.py` imports no web framework, and `main.py` contains no retrieval logic.
+That separation is why the same pipeline can be driven by a server, a script, or
+an evaluation harness without duplicating anything that matters.
 
 ## Setup
 
@@ -107,8 +158,15 @@ an evaluation set rather than by intuition.
 pip install -r requirements.txt
 ```
 
-Set `OPENAI_API_KEY` in a `.env` file in the project root, then:
+Set `OPENAI_API_KEY` in a `.env` file in the project root (see `.env.example`),
+then start the server:
 
 ```bash
-python main.py
+fastapi dev main.py
+```
+
+To run a single question through the pipeline without starting a server:
+
+```bash
+python ask.py
 ```
