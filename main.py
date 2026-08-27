@@ -31,6 +31,10 @@ class QueryResponse(BaseModel):
     sources: list[Source]
 
 
+class IngestRequest(BaseModel):
+    text: str
+
+
 @app.get("/")
 def root():
     return {"name": "docs-qa-rag", "docs": "/docs"}
@@ -52,3 +56,13 @@ def rag_query(request: QueryRequest):
         request.question, app.state.embedded_chunks, app.state.chunks
     )
     return QueryResponse(answer=result["answer"], sources=result["sources"])
+
+
+@app.post(
+    "/ingest",
+)
+def ingest(request: IngestRequest):
+    new_chunks, new_embeddings = build_index(request.text, CHUNK_SIZE, OVERLAP)
+    app.state.chunks.extend(new_chunks)
+    app.state.embedded_chunks.extend(new_embeddings)
+    return {"status": "successfull", "chunks": len(app.state.chunks)}
