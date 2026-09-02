@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
@@ -13,9 +14,13 @@ MAX_DOCUMENT_CHARS = 200_000
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    with open("data/space.txt", encoding="utf-8") as f:
-        text = f.read()
-    app.state.chunks, app.state.embedded_chunks = build_index(text, CHUNK_SIZE, OVERLAP)
+    app.state.chunks = []
+    app.state.embedded_chunks = []
+    for path in sorted(Path("data").glob("*.txt")):
+        text = path.read_text(encoding="utf-8")
+        chunks, embedded_chunks = build_index(text, CHUNK_SIZE, OVERLAP)
+        app.state.chunks.extend(chunks)
+        app.state.embedded_chunks.extend(embedded_chunks)
     yield
 
 

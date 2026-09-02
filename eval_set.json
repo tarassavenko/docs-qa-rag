@@ -1,0 +1,194 @@
+[
+  {
+    "id": 1,
+    "question": "How much was the global coffee industry worth in 2023?",
+    "type": "answerable",
+    "source": "coffee.txt",
+    "must_contain": ["US$495.50 billion"],
+    "expected_answer": "US$495.50 billion."
+  },
+  {
+    "id": 2,
+    "question": "When did the word 'coffee' enter the English language, and from which language was it borrowed?",
+    "type": "answerable",
+    "source": "coffee.txt",
+    "must_contain": ["entered the English language in 1582"],
+    "expected_answer": "In 1582, via the Dutch koffie, borrowed from Ottoman Turkish kahve."
+  },
+  {
+    "id": 3,
+    "question": "Where did the first coffeehouse in the Ottoman Empire open?",
+    "type": "answerable",
+    "source": "coffee.txt",
+    "must_contain": ["Tahtakale"],
+    "expected_answer": "In Tahtakale, Istanbul, in 1555."
+  },
+  {
+    "id": 4,
+    "question": "Which insect is the most damaging pest to the world's coffee industry?",
+    "type": "answerable",
+    "source": "coffee.txt",
+    "must_contain": ["Hypothenemus hampei"],
+    "expected_answer": "The coffee borer beetle, Hypothenemus hampei."
+  },
+  {
+    "id": 5,
+    "question": "How is kopi luwak coffee produced?",
+    "type": "answerable",
+    "source": "coffee.txt",
+    "must_contain": ["Asian palm civet"],
+    "expected_answer": "From coffee berries eaten by the Asian palm civet and harvested from its feces."
+  },
+  {
+    "id": 6,
+    "question": "Who coined the term 'machine learning' and in what year?",
+    "type": "answerable",
+    "source": "machine_learning.txt",
+    "must_contain": ["coined in 1959 by Arthur Samuel"],
+    "expected_answer": "Arthur Samuel, an IBM employee, in 1959."
+  },
+  {
+    "id": 7,
+    "question": "Which neural network architecture based on attention was introduced in 2017, and by whom?",
+    "type": "answerable",
+    "source": "machine_learning.txt",
+    "must_contain": ["Ashish Vaswani"],
+    "expected_answer": "The Transformer, introduced by Ashish Vaswani and colleagues."
+  },
+  {
+    "id": 8,
+    "question": "What book did Donald Hebb publish in 1949?",
+    "type": "answerable",
+    "source": "machine_learning.txt",
+    "must_contain": ["The Organization of Behavior"],
+    "expected_answer": "The Organization of Behavior."
+  },
+  {
+    "id": 9,
+    "question": "What was Cybertron and which company developed it?",
+    "type": "answerable",
+    "source": "machine_learning.txt",
+    "must_contain": ["Cybertron"],
+    "expected_answer": "An experimental learning machine with punched tape memory, developed by Raytheon Company in the early 1960s."
+  },
+  {
+    "id": 10,
+    "question": "Who discovered photosynthesis and in what year?",
+    "type": "answerable",
+    "source": "photosynthesis.txt",
+    "must_contain": ["Jan Ingenhousz"],
+    "expected_answer": "Jan Ingenhousz, in 1779."
+  },
+  {
+    "id": 11,
+    "question": "What is the name of the light-independent reactions that synthesize sugars in plants?",
+    "type": "answerable",
+    "source": "photosynthesis.txt",
+    "must_contain": ["Calvin cycle"],
+    "expected_answer": "The Calvin cycle."
+  },
+  {
+    "id": 12,
+    "question": "Who first proposed the general equation for photosynthesis?",
+    "type": "answerable",
+    "source": "photosynthesis.txt",
+    "must_contain": ["Cornelis van Niel"],
+    "expected_answer": "Cornelis van Niel."
+  },
+  {
+    "id": 13,
+    "question": "In what year did the Western Roman Empire collapse, and who was deposed?",
+    "type": "answerable",
+    "source": "roman_empire.txt",
+    "must_contain": ["476"],
+    "expected_answer": "In 476 AD, when Romulus Augustus was deposed by Odoacer."
+  },
+  {
+    "id": 14,
+    "question": "When was Roman citizenship granted to all freeborn inhabitants of the empire?",
+    "type": "answerable",
+    "source": "roman_empire.txt",
+    "must_contain": ["reign of Caracalla"],
+    "expected_answer": "In 212, during the reign of Caracalla."
+  },
+  {
+    "id": 15,
+    "question": "Where did Constantine the Great move the imperial seat, and when?",
+    "type": "answerable",
+    "source": "roman_empire.txt",
+    "must_contain": ["Byzantium in 330"],
+    "expected_answer": "To Byzantium in 330, which he renamed Constantinople."
+  },
+  {
+    "id": 16,
+    "question": "How much water is needed to produce one cup of coffee, and how much energy does global photosynthesis capture on average?",
+    "type": "answerable",
+    "source": "coffee.txt + photosynthesis.txt",
+    "must_contain": ["140 liters", "130 terawatts"],
+    "expected_answer": "About 140 liters of water per cup of coffee; global photosynthesis captures approximately 130 terawatts."
+  },
+  {
+    "id": 17,
+    "question": "In which year was the term machine learning coined, and in which year did Constantinople fall?",
+    "type": "answerable",
+    "source": "machine_learning.txt + roman_empire.txt",
+    "must_contain": ["coined in 1959", "1453"],
+    "expected_answer": "The term was coined in 1959; Constantinople fell in 1453."
+  },
+  {
+    "id": 18,
+    "question": "How long does astronaut training take?",
+    "type": "unanswerable",
+    "source": null,
+    "must_contain": [],
+    "expected_answer": "I don't know based on the provided context."
+  },
+  {
+    "id": 19,
+    "question": "How does drinking coffee affect blood pressure?",
+    "type": "unanswerable",
+    "source": null,
+    "must_contain": [],
+    "expected_answer": "I don't know based on the provided context."
+  },
+  {
+    "id": 20,
+    "question": "Is PyTorch or TensorFlow better for training neural networks?",
+    "type": "unanswerable",
+    "source": null,
+    "must_contain": [],
+    "expected_answer": "I don't know based on the provided context."
+  },
+  {
+    "id": 21,
+    "question": "What kind of espresso machine produces the best crema?",
+    "type": "unanswerable",
+    "source": null,
+    "must_contain": [],
+    "expected_answer": "I don't know based on the provided context."
+  },
+  {
+    "id": 22,
+    "question": "Who coined the term machine learning, and what programming language was his checkers program written in?",
+    "type": "partial",
+    "source": "machine_learning.txt",
+    "must_contain": ["coined in 1959 by Arthur Samuel"],
+    "expected_answer": "Arthur Samuel coined the term in 1959. The sources do not say what programming language his checkers program was written in."
+  },
+  {
+    "id": 23,
+    "question": "What was the Bar Kokhba Revolt, and how many casualties did it cause?",
+    "type": "partial",
+    "source": "roman_empire.txt",
+    "must_contain": ["Bar Kokhba Revolt"],
+    "expected_answer": "A Jewish uprising of 132-135 AD sparked by Hadrian's measures. The sources do not give casualty figures."
+  },
+  {
+    "id": 24,
+    "question": "What does the Outer Space Treaty establish, and which countries have signed it?",
+    "type": "partial",
+    "source": "space.txt",
+    "must_contain": ["10 October 1967"],
+    "expected_answer": "It established the framework for international space law, entered into force on 10 October 1967, precludes claims of national sovereignty and permits all states to explore freely. The sources do not say which countries signed it."
+  }
+]
