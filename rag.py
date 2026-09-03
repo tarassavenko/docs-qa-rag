@@ -1,23 +1,54 @@
-from similarity import cosine_similarity
 from embeddings import get_embedding, get_embeddings
 from chunking import chunk_text
-from config import client, EMBEDDED_MODEL, LLM
+from config import client, chroma_client, COLLECTION_NAME, EMBEDDED_MODEL, LLM
 
 
-def build_index(text, chunk_size, overlap):
+def get_collection():
+    return chroma_client.get_or_create_collection(
+        name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+    )
+
+
+def reset_collection():
+    if COLLECTION_NAME in [c.name for c in chroma_client.list_collections()]:
+        chroma_client.delete_collection(COLLECTION_NAME)
+    return get_collection()
+
+
+def build_index(text, source, chunk_size, overlap):
     chunks = chunk_text(text, chunk_size, overlap)
-    embedded_chunks = get_embeddings(chunks, EMBEDDED_MODEL)
-    return chunks, embedded_chunks
+    embeddings = get_embeddings(chunks, EMBEDDED_MODEL)
+
+    collection = get_collection()
+    collection.add(
+        ids=[f"{source}-{i}" for i in range(len(chunks))],
+        documents=chunks,
+        embeddings=embeddings,
+        metadatas=[{"source": source} for _ in chunks],
+    )
+    return collection
 
 
-def retrieve(query, embedded_chunks, chunks, k: int = 3):
+def retrieve(query, collection, k: int = 3):
     query_embedding = get_embedding(query, EMBEDDED_MODEL)
+    results = collection.query(query_embeddings=[query_embedding], n_results=k)
     retrieved_chunks = []
-    for i, emb in enumerate(embedded_chunks):
-        score = cosine_similarity(query_embedding, emb)
-        retrieved_chunks.append({"score": score, "id": i, "text": chunks[i]})
-    retrieved_chunks = sorted(retrieved_chunks, key=lambda x: x["score"], reverse=True)
-    return retrieved_chunks[:k]
+    for chunk_id, distance, text, metadata in zip(
+        results["ids"][0],
+        results["distances"][0],
+        results["documents"][0],
+        results["metadatas"][0],
+    ):
+        retrieved_chunks.append(
+            {
+                "score": 1 - distance,
+                "id": chunk_id,
+                "text": text,
+                "source": metadata["source"],
+            }
+        )
+
+    return retrieved_chunks
 
 
 def generate_answer(question, retrieved_chunks):
@@ -64,7 +95,7 @@ def generate_answer(question, retrieved_chunks):
     return response.output_text
 
 
-def answer_question(question, embedded_chunks, chunks):
-    retrieved_chunks = retrieve(question, embedded_chunks, chunks)
+def answer_question(question, collection):
+    retrieved_chunks = retrieve(question, collection)
     answer = generate_answer(question, retrieved_chunks)
     return {"answer": answer, "sources": retrieved_chunks}

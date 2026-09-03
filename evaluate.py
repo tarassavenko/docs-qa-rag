@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from rag import retrieve, build_index
+from rag import retrieve, build_index, reset_collection
 from config import CHUNK_SIZE, OVERLAP
 
 
@@ -9,14 +9,12 @@ def load_eval_set(path="eval_set.json"):
 
 
 def build_corpus_index(directory="data"):
-    chunks = []
-    embedded_chunks = []
+    collection = reset_collection()
     for path in sorted(Path(directory).glob("*.txt")):
         text = path.read_text(encoding="utf-8")
-        new_chunks, new_embeddings = build_index(text, CHUNK_SIZE, OVERLAP)
-        chunks.extend(new_chunks)
-        embedded_chunks.extend(new_embeddings)
-    return chunks, embedded_chunks
+        collection = build_index(text, path.name, CHUNK_SIZE, OVERLAP)
+
+    return collection
 
 
 def contains_all(text, terms):
@@ -29,25 +27,26 @@ def contains_any(text, terms):
     return any(term.lower() in lowered for term in terms)
 
 
-def check_anchors(cases, chunks):
+def check_anchors(cases, collection):
+    documents = collection.get()["documents"]
     missing = [
         (case["id"], term)
         for case in cases
         for term in case["must_contain"]
-        if not any(term.lower() in chunk.lower() for chunk in chunks)
+        if not any(term.lower() in chunk.lower() for chunk in documents)
     ]
     for case_id, term in missing:
         print(f"  WARNING [{case_id}] anchor missing from every chunk: {term!r}")
     return missing
 
 
-def evaluate_retrieval(cases, chunks, embedded_chunks, k=3):
+def evaluate_retrieval(cases, collection, k=3):
     scoreable = [case for case in cases if case["must_contain"]]
     hits = 0
     reciprocal_ranks = []
 
     for case in scoreable:
-        retrieved = retrieve(case["question"], embedded_chunks, chunks, k=k)
+        retrieved = retrieve(case["question"], collection, k=k)
 
         combined = "\n".join(result["text"] for result in retrieved)
         hit = contains_all(combined, case["must_contain"])
@@ -85,14 +84,14 @@ def evaluate_retrieval(cases, chunks, embedded_chunks, k=3):
 
 if __name__ == "__main__":
     cases = load_eval_set()
-    chunks, embedded_chunks = build_corpus_index()
+    collection = build_corpus_index()
 
     print(
-        f"indexed {len(chunks)} chunks (chunk_size={CHUNK_SIZE}, overlap={OVERLAP})\n"
+        f"indexed {collection.count()} chunks (chunk_size={CHUNK_SIZE}, overlap={OVERLAP})\n"
     )
-    check_anchors(cases, chunks)
+    check_anchors(cases, collection)
 
-    scores = evaluate_retrieval(cases, chunks, embedded_chunks, k=3)
+    scores = evaluate_retrieval(cases, collection, k=3)
 
     print(f"\ncases:     {scores['n']}")
     print(f"hits:      {scores['hits']}")
