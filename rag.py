@@ -53,7 +53,7 @@ def retrieve(query, collection, k: int = 3):
 
 def generate_answer(question, retrieved_chunks):
     context = "\n\n".join(
-        f'<source id="{n}">\n{result["text"]}\n</source>'
+        f'<source id="{n}" document="{result["source"]}">\n{result["text"]}\n</source>'
         for n, result in enumerate(retrieved_chunks, start=1)
     )
 
@@ -66,11 +66,13 @@ def generate_answer(question, retrieved_chunks):
                     "text": """
                      You answer questions using only the sources provided in the user message.
                     The context contains numbered sources wrapped in <source> tags.
+                    Each source carries the document attribute naming the file it came from.
                 Rules:
                     - Use only information found in the sources. Do not use prior knowledge, and do not infer or speculate beyond what is written.
                     - If the sources do not contain the answer, reply exactly: "I don't know based on the provided context."
                     - If the sources only partially answer the question, say what they support and state clearly what is missing.
                     - Cite the source ids you used, like [1] or [1][3], after the claims they support.
+                    - Name the document where the answer came from, especially if the answer comes from more than one source.
                     - Answer concisely.
                         """,
                 }
