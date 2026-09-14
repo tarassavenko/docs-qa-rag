@@ -1,18 +1,20 @@
 import json
 from pathlib import Path
 from rag import retrieve, build_index, reset_collection
-from config import CHUNK_SIZE, OVERLAP
+from config import CHUNK_SIZE, OVERLAP, EMBEDDED_MODEL, TOP_K
+from datetime import datetime, timezone
+import argparse
 
 
 def load_eval_set(path="eval_set.json"):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def build_corpus_index(directory="data"):
+def build_corpus_index(directory="data", chunk_size=CHUNK_SIZE, overlap=OVERLAP):
     collection = reset_collection()
     for path in sorted(Path(directory).glob("*.txt")):
         text = path.read_text(encoding="utf-8")
-        collection = build_index(text, path.name, CHUNK_SIZE, OVERLAP)
+        collection = build_index(text, path.name, chunk_size, overlap)
 
     return collection
 
@@ -40,10 +42,11 @@ def check_anchors(cases, collection):
     return missing
 
 
-def evaluate_retrieval(cases, collection, k=3):
+def evaluate_retrieval(cases, collection, k=TOP_K):
     scoreable = [case for case in cases if case["must_contain"]]
     hits = 0
     reciprocal_ranks = []
+    failed_ids = []
 
     for case in scoreable:
         retrieved = retrieve(case["question"], collection, k=k)
@@ -70,6 +73,7 @@ def evaluate_retrieval(cases, collection, k=3):
                 for term in case["must_contain"]
                 if term.lower() not in combined.lower()
             ]
+            failed_ids.append(case["id"])
             print(f"  MISS [{case['id']}] {case['question']}")
             print(f"        missing: {missing}")
 
@@ -79,19 +83,65 @@ def evaluate_retrieval(cases, collection, k=3):
         "hits": hits,
         "hit_rate": hits / n,
         "mrr": sum(reciprocal_ranks) / n,
+        "failed_ids": failed_ids,
     }
 
 
+def build_parser():
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate retrieval quality against the eval set."
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=TOP_K,
+        help="number of chunks to retrieve per question (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=CHUNK_SIZE,
+        help="words per chunk (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--overlap",
+        type=int,
+        default=OVERLAP,
+        help="overlapping words between chunks (default: %(default)s)",
+    )
+
+    return parser
+
+
+def log_result(record, path="eval_results.jsonl"):
+    with open(path, encoding="utf-8", mode="a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
 if __name__ == "__main__":
+    args = build_parser().parse_args()
     cases = load_eval_set()
-    collection = build_corpus_index()
+    collection = build_corpus_index(chunk_size=args.chunk_size, overlap=args.overlap)
 
     print(
-        f"indexed {collection.count()} chunks (chunk_size={CHUNK_SIZE}, overlap={OVERLAP})\n"
+        f"indexed {collection.count()} chunks "
+        f"(chunk_size={args.chunk_size}, overlap={args.overlap}, k={args.k})\n"
     )
-    check_anchors(cases, collection)
-
-    scores = evaluate_retrieval(cases, collection, k=3)
+    missing_anchors = check_anchors(cases, collection)
+    scores = evaluate_retrieval(cases, collection, k=args.k)
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "chunk_size": args.chunk_size,
+        "overlap": args.overlap,
+        "k": args.k,
+        "mode": "vector",
+        "embedding_model": EMBEDDED_MODEL,
+        "chunk_count": collection.count(),
+        **scores,
+        "missing_anchors": missing_anchors,
+    }
+    log_result(record)
 
     print(f"\ncases:     {scores['n']}")
     print(f"hits:      {scores['hits']}")

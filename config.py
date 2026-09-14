@@ -6,6 +6,7 @@ from pathlib import Path
 
 CHUNK_SIZE = 150
 OVERLAP = 50
+TOP_K = 5
 EMBEDDED_MODEL = "text-embedding-3-small"
 LLM = "gpt-4.1-mini"
 CHROMA_PATH = os.getenv("CHROMA_PATH", str(Path(__file__).parent / "chroma_db"))

@@ -1,6 +1,6 @@
 from embeddings import get_embedding, get_embeddings
 from chunking import chunk_text
-from config import client, chroma_client, COLLECTION_NAME, EMBEDDED_MODEL, LLM
+from config import client, chroma_client, COLLECTION_NAME, EMBEDDED_MODEL, LLM, TOP_K
 
 
 def get_collection():
@@ -29,7 +29,7 @@ def build_index(text, source, chunk_size, overlap):
     return collection
 
 
-def retrieve(query, collection, k: int = 3):
+def retrieve(query, collection, k: int = TOP_K):
     query_embedding = get_embedding(query, EMBEDDED_MODEL)
     results = collection.query(query_embeddings=[query_embedding], n_results=k)
     retrieved_chunks = []
@@ -97,7 +97,7 @@ def generate_answer(question, retrieved_chunks):
     return response.output_text
 
 
-def answer_question(question, collection):
-    retrieved_chunks = retrieve(question, collection)
+def answer_question(question, collection, k: int = TOP_K):
+    retrieved_chunks = retrieve(question, collection, k=k)
     answer = generate_answer(question, retrieved_chunks)
     return {"answer": answer, "sources": retrieved_chunks}
