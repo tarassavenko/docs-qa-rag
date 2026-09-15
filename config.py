@@ -11,6 +11,8 @@ EMBEDDED_MODEL = "text-embedding-3-small"
 LLM = "gpt-4.1-mini"
 CHROMA_PATH = os.getenv("CHROMA_PATH", str(Path(__file__).parent / "chroma_db"))
 COLLECTION_NAME = "documents"
+RETRIEVAL_MODE = "vector"  # Hybrid
+CANDIDATES = 20
 
 
 load_dotenv(override=True)

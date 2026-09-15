@@ -1,6 +1,13 @@
 from embeddings import get_embedding, get_embeddings
 from chunking import chunk_text
-from config import client, chroma_client, COLLECTION_NAME, EMBEDDED_MODEL, LLM, TOP_K
+from config import (
+    client,
+    chroma_client,
+    COLLECTION_NAME,
+    EMBEDDED_MODEL,
+    LLM,
+    TOP_K,
+)
 
 
 def get_collection():
