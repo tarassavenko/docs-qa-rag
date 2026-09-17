@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from rag import answer_question, build_index, reset_collection
 from config import CHUNK_SIZE, OVERLAP
+from keyword_search import build_keyword_index
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     for path in sorted(Path("data").glob("*.txt")):
         text = path.read_text(encoding="utf-8")
         app.state.collection = build_index(text, path.name, CHUNK_SIZE, OVERLAP)
+    app.state.keyword_index = build_keyword_index(app.state.collection)
     yield
 
 
@@ -63,7 +65,7 @@ def check_health():
 @app.get("/status")
 def check_status():
     return {
-        "indexed": bool(app.state.collection),
+        "indexed": app.state.collection.count() > 0,
         "chunks": app.state.collection.count(),
     }
 
@@ -77,7 +79,11 @@ def rag_query(request: QueryRequest):
         )
 
     try:
-        result = answer_question(request.question, app.state.collection)
+        result = answer_question(
+            request.question,
+            app.state.collection,
+            keyword_index=app.state.keyword_index,
+        )
     except Exception:
         logger.exception("Answering question failed")
         raise HTTPException(
@@ -96,5 +102,6 @@ def ingest(request: IngestRequest):
     except Exception:
         logger.exception("Indexing document failed")
         raise HTTPException(status_code=502, detail="The embedding request failed.")
+    app.state.keyword_index = build_keyword_index(app.state.collection)
 
     return {"status": "successful", "chunks": app.state.collection.count()}
