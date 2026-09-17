@@ -7,7 +7,10 @@ from config import (
     EMBEDDED_MODEL,
     LLM,
     TOP_K,
+    CANDIDATES,
+    RETRIEVAL_MODE,
 )
+from keyword_search import search_keywords
 
 
 def get_collection():
@@ -58,6 +61,56 @@ def retrieve(query, collection, k: int = TOP_K):
     return retrieved_chunks
 
 
+def retrieve_hybrid(query, collection, keyword_index, k=TOP_K, rrf_k=60):
+    vector_results = retrieve(query, collection, k=CANDIDATES)
+    if keyword_index is None:
+        keyword_results = []
+    else:
+        keyword_results = search_keywords(keyword_index, query, n=CANDIDATES)
+
+    fused = {}
+    for rank, result in enumerate(vector_results, start=1):
+        entry = fused.setdefault(
+            result["id"],
+            {
+                "id": result["id"],
+                "text": result["text"],
+                "source": result["source"],
+                "rrf_score": 0.0,
+                "vector_rank": None,
+                "keyword_rank": None,
+                "vector_score": None,
+                "keyword_score": None,
+            },
+        )
+        entry["rrf_score"] += 1 / (rrf_k + rank)
+        entry["vector_rank"] = rank
+        entry["vector_score"] = result["score"]
+    for rank, result in enumerate(keyword_results, start=1):
+        entry = fused.setdefault(
+            result["id"],
+            {
+                "id": result["id"],
+                "text": result["text"],
+                "source": result["source"],
+                "rrf_score": 0.0,
+                "vector_rank": None,
+                "keyword_rank": None,
+                "vector_score": None,
+                "keyword_score": None,
+            },
+        )
+        entry["rrf_score"] += 1 / (rrf_k + rank)
+        entry["keyword_rank"] = rank
+        entry["keyword_score"] = result["score"]
+
+    ranked = sorted(fused.values(), key=lambda entry: entry["rrf_score"], reverse=True)
+    top = ranked[:k]
+    for entry in top:
+        entry["score"] = entry["rrf_score"]
+    return top
+
+
 def generate_answer(question, retrieved_chunks):
     context = "\n\n".join(
         f'<source id="{n}" document="{result["source"]}">\n{result["text"]}\n</source>'
@@ -104,7 +157,14 @@ def generate_answer(question, retrieved_chunks):
     return response.output_text
 
 
-def answer_question(question, collection, k: int = TOP_K):
-    retrieved_chunks = retrieve(question, collection, k=k)
+def answer_question(
+    question, collection, keyword_index=None, k: int = TOP_K, mode=RETRIEVAL_MODE
+):
+    if mode == "hybrid":
+        retrieved_chunks = retrieve_hybrid(question, collection, keyword_index, k=k)
+    elif mode == "vector":
+        retrieved_chunks = retrieve(question, collection, k=k)
+    else:
+        raise ValueError(f"unknown retrieval mode: {mode!r}")
     answer = generate_answer(question, retrieved_chunks)
     return {"answer": answer, "sources": retrieved_chunks}

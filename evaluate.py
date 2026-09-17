@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
-from rag import retrieve, build_index, reset_collection
-from config import CHUNK_SIZE, OVERLAP, EMBEDDED_MODEL, TOP_K
+from rag import retrieve, build_index, reset_collection, retrieve_hybrid
+from config import CHUNK_SIZE, OVERLAP, EMBEDDED_MODEL, TOP_K, RETRIEVAL_MODE
 from datetime import datetime, timezone
+from keyword_search import build_keyword_index
 import argparse
 
 
@@ -42,14 +43,23 @@ def check_anchors(cases, collection):
     return missing
 
 
-def evaluate_retrieval(cases, collection, k=TOP_K):
+def evaluate_retrieval(
+    cases, collection, k=TOP_K, keyword_index=None, mode=RETRIEVAL_MODE
+):
     scoreable = [case for case in cases if case["must_contain"]]
     hits = 0
     reciprocal_ranks = []
     failed_ids = []
 
     for case in scoreable:
-        retrieved = retrieve(case["question"], collection, k=k)
+        if mode == "vector":
+            retrieved = retrieve(case["question"], collection, k=k)
+        elif mode == "hybrid":
+            retrieved = retrieve_hybrid(
+                case["question"], collection, keyword_index, k=k
+            )
+        else:
+            raise ValueError(f"unknown retrieval mode: {mode!r}")
 
         combined = "\n".join(result["text"] for result in retrieved)
         hit = contains_all(combined, case["must_contain"])
@@ -110,6 +120,13 @@ def build_parser():
         default=OVERLAP,
         help="overlapping words between chunks (default: %(default)s)",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["vector", "hybrid"],
+        default=RETRIEVAL_MODE,
+        help="choosing the retrieval mode (default: %(default)s)",
+    )
 
     return parser
 
@@ -123,19 +140,25 @@ if __name__ == "__main__":
     args = build_parser().parse_args()
     cases = load_eval_set()
     collection = build_corpus_index(chunk_size=args.chunk_size, overlap=args.overlap)
+    if args.mode == "hybrid":
+        keyword_index = build_keyword_index(collection)
+    else:
+        keyword_index = None
 
     print(
         f"indexed {collection.count()} chunks "
-        f"(chunk_size={args.chunk_size}, overlap={args.overlap}, k={args.k})\n"
+        f"(chunk_size={args.chunk_size}, overlap={args.overlap}, k={args.k},mode={args.mode})\n"
     )
     missing_anchors = check_anchors(cases, collection)
-    scores = evaluate_retrieval(cases, collection, k=args.k)
+    scores = evaluate_retrieval(
+        cases, collection, k=args.k, keyword_index=keyword_index, mode=args.mode
+    )
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "chunk_size": args.chunk_size,
         "overlap": args.overlap,
         "k": args.k,
-        "mode": "vector",
+        "mode": args.mode,
         "embedding_model": EMBEDDED_MODEL,
         "chunk_count": collection.count(),
         **scores,
