@@ -41,7 +41,7 @@ UI generated from the request and response models.
 | `GET` | `/health` | Liveness check — is the process running |
 | `GET` | `/status` | Readiness check — is anything indexed, and how many chunks |
 | `POST` | `/ask` | Answer a question from the indexed documents, with sources |
-| `POST` | `/ingest` | Add a document's text to the index |
+| `POST` | `/ingest` | Add a document's text to the index (disabled in the public deployment) |
 
 `/health` and `/status` are deliberately separate: the first answers "is the
 process alive", the second "can it actually serve a request". A server with no
@@ -56,7 +56,9 @@ scores around 0.016.
 
 | Status | Meaning |
 | --- | --- |
+| `403` | Ingestion is disabled on this deployment |
 | `422` | Request failed validation — empty or oversized question or document |
+| `429` | Too many requests from this client |
 | `502` | The upstream embedding or chat request failed |
 | `503` | Nothing has been indexed yet, so `/ask` has nothing to answer from |
 
@@ -65,6 +67,32 @@ FastAPI rejects bad input before it reaches the pipeline and documents the
 limits in `/docs`. Failures of the upstream model are logged with their full
 traceback server-side, while the client receives a generic message — the
 operator needs the detail, the caller does not.
+
+### Limits on the public deployment
+
+Every request to `/ask` costs an embedding call and a chat completion, and every
+ingested document costs embeddings, so a public URL is a public spending
+account. Three measures bound it:
+
+- **`/ingest` is disabled in the deployed configuration** and returns `403`. The
+  collection is shared by every visitor, so open ingestion would mean anyone
+  could add text that becomes context for everyone else's questions — a cost
+  problem and a prompt-injection route at once. The endpoint still appears in
+  `/docs`, because an honest `403` is clearer than a missing route. It is
+  enabled by default when running locally.
+- **`/ask` is rate limited per client**, configurable through `RATE_LIMIT`
+  (default 10/minute). The limiter identifies callers by the first entry of the
+  `X-Forwarded-For` header, falling back to the socket address when the header
+  is absent. Without that, every request arriving through the platform's proxy
+  would share a single bucket and one visitor could lock out the rest. The
+  counters are in-memory, so they reset on restart; a shared store would be
+  needed across multiple instances. This is a cost guard, not a security
+  boundary: the header is only trustworthy because the platform overwrites it.
+- **The request-size limits** on the Pydantic models cap how much text a single
+  call can submit, which bounds the cost of any one request.
+
+A monthly spending limit is also set on the OpenAI account, as the backstop that
+still works if the rest is misconfigured.
 
 ## Design decisions
 
@@ -122,6 +150,19 @@ operator needs the detail, the caller does not.
   document's chunks to the collection alongside the existing ones, tagged with
   the caller-supplied `source`. Per-document deletion is not implemented yet,
   but the metadata needed for it is stored.
+- **The index is rebuilt at startup rather than persisted.** The lifespan
+  handler resets the collection and re-indexes `data/` on every start, and on a
+  container platform the filesystem is discarded when the instance stops in any
+  case. The committed corpus is therefore the single source of truth and every
+  deployment is reproducible; the cost is that documents added through
+  `/ingest` do not survive a restart. Runtime ingestion demonstrates the
+  ingestion path; it is not durable storage. Making it durable means moving the
+  collection out of the container — a managed vector store such as Qdrant
+  Cloud, Chroma Cloud or Postgres with pgvector, or a paid persistent disk —
+  and seeding `data/` only when the collection is empty. Because storage sits
+  behind `build_index` and `retrieve`, that is the same shape of change as the
+  original Chroma migration, with the evaluation set again acting as the
+  regression check.
 - **Index building is separate from answering.** Indexes are built once by the
   caller and passed into `answer_question`, so embedding the document does not
   happen per question. This is the shape an API server needs: build at startup,
@@ -334,11 +375,13 @@ than by intuition.
   little effect on hit rate for this corpus, and the failures it left were
   ranking problems rather than boundary problems, but recursive splitting on
   paragraph breaks is untested.
-- **Ingested documents are lost on restart.** The Chroma collection persists to
-  disk, but the lifespan handler resets it and rebuilds from `data/` on every
-  start, so anything added through `/ingest` disappears. Reusing an existing
-  collection would fix this but raises a staleness question that has not been
-  worked out.
+- **Runtime-ingested documents are not durable.** This follows from the startup
+  rebuild described above, and deployment makes it visible: a container's
+  filesystem is discarded when the instance sleeps or is redeployed. The fix is
+  an external store rather than a code change — a managed vector database (free
+  tiers exist) or a persistent disk — plus seeding logic that indexes `data/`
+  only when the collection is empty and detects when the committed corpus has
+  changed. This is the strongest candidate for the next feature.
 - **Per-document deletion is not implemented.** The metadata to support it is
   stored, but there is no endpoint to remove or replace a single document.
 - **The keyword index is rebuilt from scratch on every ingest.** This

@@ -1,11 +1,14 @@
 import logging
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from rag import answer_question, build_index, reset_collection
-from config import CHUNK_SIZE, OVERLAP
+from config import CHUNK_SIZE, OVERLAP, ENABLE_INGEST, RATE_LIMIT
 from keyword_search import build_keyword_index
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,17 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=client_ip)
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 class QueryRequest(BaseModel):
@@ -71,7 +84,8 @@ def check_status():
 
 
 @app.post("/ask", response_model=QueryResponse)
-def rag_query(request: QueryRequest):
+@limiter.limit(RATE_LIMIT)
+def rag_query(request: Request, payload: QueryRequest):
     if app.state.collection.count() == 0:
         raise HTTPException(
             status_code=503,
@@ -80,7 +94,7 @@ def rag_query(request: QueryRequest):
 
     try:
         result = answer_question(
-            request.question,
+            payload.question,
             app.state.collection,
             keyword_index=app.state.keyword_index,
         )
@@ -95,6 +109,11 @@ def rag_query(request: QueryRequest):
 
 @app.post("/ingest", response_model=IngestResponse)
 def ingest(request: IngestRequest):
+    if not ENABLE_INGEST:
+        raise HTTPException(
+            status_code=403, detail="Ingestion is disabled on this deployment"
+        )
+
     try:
         app.state.collection = build_index(
             request.text, request.source, CHUNK_SIZE, OVERLAP
