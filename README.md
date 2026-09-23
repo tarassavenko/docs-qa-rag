@@ -7,6 +7,17 @@ Ask a question about the indexed documents, and the system retrieves the most
 relevant passages — combining semantic search with keyword search — and asks an
 LLM to answer using only those passages, citing the sources it used.
 
+**Live: [docs-qa-rag.onrender.com/docs](https://docs-qa-rag.onrender.com/docs)**
+
+Try `POST /ask` from the interactive docs. The deployment runs on a free
+instance that sleeps when idle, so the first request after a pause takes up to a
+minute while the container wakes and re-indexes the corpus; after that a
+question is answered in two to three seconds. Ingestion is disabled there — see
+[Limits on the public deployment](#limits-on-the-public-deployment).
+
+![The generated API documentation, listing the five endpoints and the request
+and response schemas](assets/docs-screenshot.jpg)
+
 ## How it works
 
 1. **Chunk** — each document is split into overlapping word-based windows.
@@ -23,12 +34,16 @@ LLM to answer using only those passages, citing the sources it used.
 
 ## Status
 
-Work in progress. The pipeline is served as a FastAPI application backed by a
-persistent Chroma collection and an in-memory keyword index. Documents are
-ingested over HTTP and questions are answered with hybrid retrieval and cited
-generation. Retrieval has been tuned and measured against a hand-written
+Complete and deployed. The pipeline is served as a FastAPI application backed by
+a Chroma collection and an in-memory BM25 index, containerised with Docker and
+running on Render. Retrieval was tuned and measured against a hand-written
 evaluation set: hit rate went from 85% to 100% through a chunking and `k` sweep
-followed by hybrid search. Deployment is next.
+followed by hybrid search.
+
+Deliberately out of scope: PDF ingestion (a parsing problem rather than a
+retrieval one), durable storage for runtime-ingested documents, and answer
+quality metrics beyond retrieval hit rate. Each is covered under
+[Open questions](#open-questions) with the reasoning and the intended fix.
 
 ## API
 
@@ -126,6 +141,53 @@ Two deliberate choices:
   message.
 
 Configuration is logged; secrets never are.
+
+## Deployment
+
+The service is containerised and runs on Render's free tier, rebuilt and
+redeployed automatically on every push to `main`.
+
+**The image** starts from `python:3.12-slim` — 3.12 specifically, because the
+prompt-building code nests same-type quotes inside f-strings, which earlier
+versions reject. Dependencies are copied and installed before the application
+code so that editing a module does not invalidate the dependency layer; a
+rebuild after a code change takes seconds rather than reinstalling a hundred
+packages. The two NLTK data packages that keyword search needs at import time
+are downloaded during the build, since a container has no writable home
+directory to fetch them into later. `.dockerignore` keeps `.env`, the local
+virtual environment, `.git` and the local Chroma directory out of the image;
+the build context is a few hundred kilobytes and the finished image is ~850 MB,
+dominated by Chroma's dependency tree.
+
+**The start command** binds `0.0.0.0` rather than `127.0.0.1` — a container
+that listens only on loopback accepts nothing from outside, with no error to
+show for it — and takes its port from `$PORT`, which the platform assigns.
+Because the port has to be expanded at runtime, the command runs through a
+shell with `exec`, so the server replaces the shell as the container's main
+process and receives stop signals directly instead of being killed after a
+timeout on every redeploy.
+
+**Configuration arrives as environment variables**, never baked into the image:
+the API key, `ENABLE_INGEST`, `RATE_LIMIT` and `LOG_LEVEL`. The same image
+therefore runs unchanged locally with ingestion enabled and in production with
+it disabled.
+
+**Health checks** point at `/health`, which is deliberately trivial and
+deliberately outside the rate limiter: the platform polls it every few seconds,
+and a rate-limited health check would look like a dead instance.
+
+Two measurements worth recording. Indexing the corpus at startup takes about ten
+seconds, which is why a precomputed embedding cache was considered and
+rejected — it would have saved ten seconds of a wake-up dominated by the
+platform's own container start. And a question takes ~2.7s on Render against
+~5.6s locally, despite a much weaker CPU: the latency is almost entirely
+network round-trips to OpenAI, and a datacentre has a better path to them than a
+home connection.
+
+The container's filesystem is discarded when the instance sleeps or redeploys,
+which is why the index is rebuilt from the committed corpus at startup rather
+than persisted. See the design decision above for what durable storage would
+require.
 
 ## Design decisions
 
@@ -482,3 +544,24 @@ python evaluate.py
 
 Flags select the configuration — `--mode vector|hybrid`, `--k`, `--chunk-size`,
 `--overlap` — and default to the values in `config.py`.
+
+### Running the container
+
+To run the same image that is deployed:
+
+```bash
+docker build -t docs-qa-rag .
+```
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env docs-qa-rag
+```
+
+The NLTK download and the environment variables are handled by the image and
+the `--env-file` flag, so nothing else needs to be installed. Add
+`-e ENABLE_INGEST=false` to reproduce the deployed configuration, or
+`-e LOG_LEVEL=WARNING` to quieten the logs.
+
+Note that `--env-file` passes each line through literally, while
+`python-dotenv` strips surrounding quotes. A key written as `KEY='sk-...'` works
+locally and fails inside the container with a 401.
