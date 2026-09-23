@@ -94,6 +94,39 @@ account. Three measures bound it:
 A monthly spending limit is also set on the OpenAI account, as the backstop that
 still works if the rest is misconfigured.
 
+### Logging
+
+A deployed service offers no terminal and no debugger, so its log output is the
+only view into it. Logging is configured once at import, and the level is set by
+`LOG_LEVEL` (default `INFO`) so verbosity can be changed without a rebuild.
+
+Startup emits a single line describing what was loaded and under which
+configuration:
+
+```
+INFO | main | Indexed 5 documents (416 chunks) in 10.86s | mode=hybrid top_k=5 chunk_size=150 overlap=50
+```
+
+Each answered question emits one line with what the platform's own access log
+cannot know — how long the model calls took, which retrieval mode ran, and what
+was retrieved:
+
+```
+INFO | main | /ask completed in 5634ms | mode=hybrid top_source=roman_empire.txt-28 sources=5 question='...' length_of_question=63
+```
+
+Two deliberate choices:
+
+- **Questions are logged truncated to 80 characters, with their full length
+  recorded separately.** Enough to recognise what was asked and to spot a flood
+  of oversized requests, without storing everything a stranger submits in full.
+- **Rejected ingestion attempts are logged at `WARNING` with the client
+  address**, so repeated probing of a public URL is visible. Upstream failures
+  are logged with their full traceback while the caller receives only a generic
+  message.
+
+Configuration is logged; secrets never are.
+
 ## Design decisions
 
 - **No RAG framework.** LangChain, LlamaIndex and similar libraries are

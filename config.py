@@ -16,7 +16,7 @@ CHROMA_PATH = os.getenv("CHROMA_PATH", str(Path(__file__).parent / "chroma_db"))
 COLLECTION_NAME = "documents"
 RETRIEVAL_MODE = "hybrid"  # Choose a mode: hybrid or vector
 CANDIDATES = 20
-
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 ENABLE_INGEST = os.getenv("ENABLE_INGEST", "true").strip().lower() == "true"
 RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 
